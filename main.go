@@ -2,9 +2,12 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
@@ -12,6 +15,12 @@ import (
 
 	"github.com/robertkrimen/otto" // For JavaScript plugins
 )
+
+// Plugin struct to store plugin name and download URL
+type Plugin struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
+}
 
 // Welcome message and menu
 func displayWelcomeMessage() {
@@ -25,6 +34,7 @@ func displayMenu() {
 	fmt.Println("1. Help/Info")
 	fmt.Println("2. List Available Plugins")
 	fmt.Println("3. Load and Execute a Plugin")
+	fmt.Println("4. Install Plugin from Library")
 	fmt.Println("0. Exit")
 	fmt.Print("Enter your choice: ")
 }
@@ -57,6 +67,75 @@ func listPlugins() []string {
 	}
 	fmt.Println()
 	return plugins
+}
+
+// Function to download and install a plugin
+func installPlugin() {
+	// URL of the server-side plugin list
+	const pluginListURL = "https://dev.lewdlilly.tv/PluginLib/pliuginlib.json" // Update with your server URL
+
+	// Fetch the plugin list
+	resp, err := http.Get(pluginListURL)
+	if err != nil {
+		log.Println("Failed to retrieve plugin list:", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Read and decode the JSON list
+	var plugins []Plugin
+	err = json.NewDecoder(resp.Body).Decode(&plugins)
+	if err != nil {
+		log.Println("Failed to parse plugin list:", err)
+		return
+	}
+
+	// Display available plugins
+	fmt.Println("\n---- Available Plugins for Download ----")
+	for i, plugin := range plugins {
+		fmt.Printf("%d. %s\n", i+1, plugin.Name)
+	}
+
+	// Ask user to choose a plugin to download
+	fmt.Print("Enter the plugin number to download: ")
+	reader := bufio.NewReader(os.Stdin)
+	pluginChoice, _ := reader.ReadString('\n')
+	pluginChoice = strings.TrimSpace(pluginChoice)
+
+	pluginIndex, err := strconv.Atoi(pluginChoice)
+	if err != nil || pluginIndex < 1 || pluginIndex > len(plugins) {
+		fmt.Println("Invalid plugin number.")
+		return
+	}
+
+	// Get selected plugin info
+	selectedPlugin := plugins[pluginIndex-1]
+
+	// Download the plugin file
+	fmt.Println("Downloading plugin:", selectedPlugin.Name)
+	resp, err = http.Get(selectedPlugin.URL)
+	if err != nil {
+		log.Println("Failed to download plugin:", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Save the downloaded file to the plugins folder
+	filePath := "./plugins/" + selectedPlugin.Name
+	out, err := os.Create(filePath)
+	if err != nil {
+		log.Println("Failed to save plugin:", err)
+		return
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		log.Println("Failed to write plugin file:", err)
+		return
+	}
+
+	fmt.Println("Plugin installed successfully:", selectedPlugin.Name)
 }
 
 // Function to load and execute a plugin based on the file extension
@@ -111,21 +190,20 @@ func loadPythonPlugin(path string) {
 	fmt.Println("Python Plugin output:", string(output))
 }
 
-// Function to load PowerShell plugins
+// Function to load and execute PowerShell plugins
 func loadPowerShellPlugin(path string) {
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("Enter the hostname or IP address to ping: ")
-	targetHost, _ := reader.ReadString('\n')
-	targetHost = strings.TrimSpace(targetHost) // Trim whitespace
+	cmd := exec.Command("powershell", "-ExecutionPolicy", "Bypass", "-File", path)
 
-	cmd := exec.Command("powershell", "-ExecutionPolicy", "Bypass", "-File", path, targetHost)
-	output, err := cmd.CombinedOutput()
+	// Redirect stdin, stdout, and stderr to allow the PowerShell script to handle its own prompts
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	// Execute the PowerShell command
+	err := cmd.Run()
 	if err != nil {
 		log.Println("Failed to execute PowerShell plugin:", err)
-		return
 	}
-
-	fmt.Println("PowerShell Plugin output:", string(output))
 }
 
 func main() {
@@ -166,6 +244,8 @@ func main() {
 					loadAndRunPlugin(plugins[pluginIndex-1])
 				}
 			}
+		case "4":
+			installPlugin()
 		case "0":
 			fmt.Println("Exiting goCLI. Goodbye!")
 			return
