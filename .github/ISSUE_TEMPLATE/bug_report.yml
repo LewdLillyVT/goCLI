@@ -1,0 +1,32 @@
+name: Bug Report
+description: Create a report to help us improve
+title: 'Bug Report'
+labels: bug report
+
+body:
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: Describe the Bug
+      description: Provide a clear and concise description of what the bug is, what you think caused the issue, steps to reproduce, and what plugins you have installed.
+      placeholder: What happened exactly? What did you expect to happen? Steps to reproduce, including any relevant plugin information.
+    validations:
+      required: true
+
+  - type: input
+    id: error-log-link
+    attributes:
+      label: Error Log Link
+      description: Please paste a link to the latest error log file (preferably on Pastebin).
+      placeholder: https://pastebin.com/your-error-log
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Add any other context about the problem here, such as screenshots or additional details.
+      placeholder: Any other details that might help diagnose the problem.
+    validations:
+      required: false
