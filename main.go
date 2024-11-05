@@ -10,8 +10,10 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/robertkrimen/otto" // For JavaScript plugins
 )
@@ -20,6 +22,38 @@ import (
 type Plugin struct {
 	Name string `json:"name"`
 	URL  string `json:"url"`
+}
+
+// Paths for plugins, logs, and dependencies
+var (
+	baseDir         = filepath.Join(os.Getenv("LOCALAPPDATA"), "goCLI")
+	pluginsDir      = filepath.Join(baseDir, "plugins")
+	logsDir         = filepath.Join(baseDir, "logs")
+	logFilePrefix   = "errorlog"
+	dependenciesDir = filepath.Join(baseDir, "dependencies") // New directory for dependencies
+)
+
+// Initialize directories and log file
+func initializeAppDirectories() {
+	// Create goCLI, plugins, logs, and dependencies directories if they don't exist
+	dirs := []string{baseDir, pluginsDir, logsDir, dependenciesDir}
+	for _, dir := range dirs {
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				log.Fatalf("Failed to create directory %s: %v", dir, err)
+			}
+		}
+	}
+
+	// Initialize log file
+	currentDate := time.Now().Format("2006-01-02")
+	logFilePath := filepath.Join(logsDir, fmt.Sprintf("%s_%s.log", logFilePrefix, currentDate))
+	logFile, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatalf("Failed to create log file: %v", err)
+	}
+	log.SetOutput(logFile)
+	log.Println("Application started")
 }
 
 // Welcome message and menu
@@ -35,6 +69,7 @@ func displayMenu() {
 	fmt.Println("2. List Available Plugins")
 	fmt.Println("3. Load and Execute a Plugin")
 	fmt.Println("4. Install Plugin from Library")
+	fmt.Println("5. Load Plugin Info") // New option for loading plugin info
 	fmt.Println("0. Exit")
 	fmt.Print("Enter your choice: ")
 }
@@ -45,13 +80,26 @@ func displayHelp() {
 	fmt.Println("This is a modular CLI tool written in Go.")
 	fmt.Println("You can load and execute plugins written in JavaScript, Python, or PowerShell.")
 	fmt.Println("Choose an option from the menu to explore the tool’s features.")
+	fmt.Println("\n---- Plugin Information ----")
+	fmt.Printf("Plugins Folder Location: %s\n", pluginsDir)
+	fmt.Println("Place your plugins in the above folder. Supported plugins have the extensions .js, .py, and .ps1.")
+
+	fmt.Println("\n---- Error Reporting ----")
+	fmt.Printf("Error logs are stored in the logs folder located at: %s\n", logsDir)
+	fmt.Println("If you encounter issues, please follow these steps:")
+	fmt.Println("1. Locate the latest error log file in the logs folder (e.g., errorlog_YYYY-MM-DD.log).")
+	fmt.Println("2. Copy the contents of the log file and paste it to a service like Pastebin.")
+	fmt.Println("3. Visit the GitHub repository for this project and create a new issue.")
+	fmt.Println("4. Include the Pastebin link & a description of what caused the error in the issue report for troubleshooting assistance.")
+	fmt.Println("\nGitHub Repository for issues: https://github.com/LewdLillyVT/goCLI/issues")
 }
 
 // Function to list all plugins in the plugins folder
 func listPlugins() []string {
-	files, err := ioutil.ReadDir("./plugins")
+	files, err := ioutil.ReadDir(pluginsDir)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Failed to read plugins directory:", err)
+		return nil
 	}
 
 	var plugins []string
@@ -72,21 +120,46 @@ func listPlugins() []string {
 // Function to download and install a plugin
 func installPlugin() {
 	// URL of the server-side plugin list
-	const pluginListURL = "https://dev.lewdlilly.tv/PluginLib/pliuginlib.json" // Update with your server URL
+	const pluginListURL = "https://dev.lewdlilly.tv/PluginLib/pluginlib.json" // Ensure this URL is correct and accessible
 
 	// Fetch the plugin list
 	resp, err := http.Get(pluginListURL)
 	if err != nil {
 		log.Println("Failed to retrieve plugin list:", err)
+		fmt.Println("Error: Could not retrieve plugin list. Check your internet connection or server URL.")
 		return
 	}
 	defer resp.Body.Close()
 
-	// Read and decode the JSON list
-	var plugins []Plugin
-	err = json.NewDecoder(resp.Body).Decode(&plugins)
+	// Check if the server returned a successful HTTP status code
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Server returned non-200 status: %d %s\n", resp.StatusCode, resp.Status)
+		fmt.Println("Error: Unable to retrieve the plugin list. Server returned an error.")
+		return
+	}
+
+	// Verify the content type to ensure it's JSON
+	contentType := resp.Header.Get("Content-Type")
+	if !strings.Contains(contentType, "application/json") {
+		log.Println("Unexpected content type:", contentType)
+		fmt.Println("Error: Server response was not JSON. Please check the plugin list URL.")
+		return
+	}
+
+	// Read the response body
+	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("Failed to parse plugin list:", err)
+		log.Println("Failed to read response body:", err)
+		fmt.Println("Error: Failed to read server response.")
+		return
+	}
+
+	// Attempt to parse the response as JSON
+	var plugins []Plugin
+	err = json.Unmarshal(body, &plugins)
+	if err != nil {
+		log.Println("Failed to parse plugin list as JSON:", err)
+		fmt.Println("Error: Failed to parse plugin list. Server might be returning an unexpected format.")
 		return
 	}
 
@@ -102,29 +175,42 @@ func installPlugin() {
 	pluginChoice, _ := reader.ReadString('\n')
 	pluginChoice = strings.TrimSpace(pluginChoice)
 
+	// Validate user input
 	pluginIndex, err := strconv.Atoi(pluginChoice)
 	if err != nil || pluginIndex < 1 || pluginIndex > len(plugins) {
-		fmt.Println("Invalid plugin number.")
+		fmt.Println("Invalid plugin number. Please enter a valid option.")
 		return
 	}
 
 	// Get selected plugin info
 	selectedPlugin := plugins[pluginIndex-1]
 
+	// Ensure the plugins directory exists
+	if _, err := os.Stat(pluginsDir); os.IsNotExist(err) {
+		err := os.MkdirAll(pluginsDir, os.ModePerm)
+		if err != nil {
+			log.Println("Failed to create plugins directory:", err)
+			fmt.Println("Error: Could not create plugins directory.")
+			return
+		}
+	}
+
 	// Download the plugin file
 	fmt.Println("Downloading plugin:", selectedPlugin.Name)
 	resp, err = http.Get(selectedPlugin.URL)
 	if err != nil {
 		log.Println("Failed to download plugin:", err)
+		fmt.Println("Error: Could not download the plugin.")
 		return
 	}
 	defer resp.Body.Close()
 
-	// Save the downloaded file to the plugins folder
-	filePath := "./plugins/" + selectedPlugin.Name
+	// Save the downloaded file to the plugins folder in AppData
+	filePath := filepath.Join(pluginsDir, selectedPlugin.Name)
 	out, err := os.Create(filePath)
 	if err != nil {
 		log.Println("Failed to save plugin:", err)
+		fmt.Println("Error: Could not save the downloaded plugin.")
 		return
 	}
 	defer out.Close()
@@ -132,6 +218,7 @@ func installPlugin() {
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
 		log.Println("Failed to write plugin file:", err)
+		fmt.Println("Error: Could not write the downloaded plugin to disk.")
 		return
 	}
 
@@ -140,86 +227,192 @@ func installPlugin() {
 
 // Function to load and execute a plugin based on the file extension
 func loadAndRunPlugin(pluginName string) {
-	pluginPath := "./plugins/" + pluginName
+	pluginPath := filepath.Join(pluginsDir, pluginName)
 
-	if strings.HasSuffix(pluginName, ".js") {
+	switch {
+	case strings.HasSuffix(pluginName, ".js"):
 		loadJSPlugin(pluginPath)
-	} else if strings.HasSuffix(pluginName, ".py") {
+	case strings.HasSuffix(pluginName, ".py"):
 		loadPythonPlugin(pluginPath)
-	} else if strings.HasSuffix(pluginName, ".ps1") {
+	case strings.HasSuffix(pluginName, ".ps1"):
 		loadPowerShellPlugin(pluginPath)
-	} else {
-		fmt.Println("Unsupported plugin type.")
+	default:
+		log.Println("Unsupported plugin type:", pluginName)
+		fmt.Println("Error: Unsupported plugin type.")
 	}
 }
 
-// Function to load JavaScript plugins
-func loadJSPlugin(path string) {
+// Function to load and run a JavaScript plugin
+func loadJSPlugin(pluginPath string) {
+	// Read the plugin file
+	data, err := ioutil.ReadFile(pluginPath)
+	if err != nil {
+		log.Println("Failed to read JS plugin file:", err)
+		fmt.Println("Error: Unable to read the plugin file.")
+		return
+	}
+
+	// Execute the JavaScript code
 	vm := otto.New()
-
-	script, err := ioutil.ReadFile(path)
+	_, err = vm.Run(string(data))
 	if err != nil {
-		log.Println("Failed to read JS plugin:", err)
+		log.Println("Error executing JS plugin:", err)
+		fmt.Println("Error: Failed to execute the plugin.")
 		return
 	}
 
-	_, err = vm.Run(string(script))
-	if err != nil {
-		log.Println("Failed to run JS plugin:", err)
-		return
-	}
-
-	value, err := vm.Call("run", nil)
-	if err != nil {
-		log.Println("Failed to call 'run' function in JS plugin:", err)
-		return
-	}
-
-	fmt.Println("JavaScript Plugin output:", value.String())
+	fmt.Println("JavaScript plugin executed successfully.")
 }
 
-// Function to load Python plugins
-func loadPythonPlugin(path string) {
-	cmd := exec.Command("python", path) // Change "python3" to "python" if needed
+// Function to load and run a Python plugin
+func loadPythonPlugin(pluginPath string) {
+	cmd := exec.Command("python", pluginPath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Println("Failed to execute Python plugin:", err)
+		log.Println("Error executing Python plugin:", err)
+		fmt.Println("Error: Failed to execute the Python plugin.")
 		return
 	}
 
-	fmt.Println("Python Plugin output:", string(output))
+	fmt.Println("Python plugin output:\n", string(output))
 }
 
-// Function to load and execute PowerShell plugins
-func loadPowerShellPlugin(path string) {
-	cmd := exec.Command("powershell", "-ExecutionPolicy", "Bypass", "-File", path)
-
-	// Redirect stdin, stdout, and stderr to allow the PowerShell script to handle its own prompts
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	// Execute the PowerShell command
-	err := cmd.Run()
+// Function to load and run a PowerShell plugin
+func loadPowerShellPlugin(pluginPath string) {
+	cmd := exec.Command("powershell", "-ExecutionPolicy", "Bypass", "-File", pluginPath)
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Println("Failed to execute PowerShell plugin:", err)
+		log.Println("Error executing PowerShell plugin:", err)
+		fmt.Println("Error: Failed to execute the PowerShell plugin.")
+		return
+	}
+
+	fmt.Println("PowerShell plugin output:\n", string(output))
+}
+
+// Function to load and display plugin information
+func loadPluginInfo() {
+	files, err := ioutil.ReadDir(pluginsDir)
+	if err != nil {
+		log.Println("Failed to read plugins directory:", err)
+		return
+	}
+
+	// Map to store plugin info
+	plugins := make([]string, 0)
+
+	for _, f := range files {
+		if !f.IsDir() && (strings.HasSuffix(f.Name(), ".js") || strings.HasSuffix(f.Name(), ".py") || strings.HasSuffix(f.Name(), ".ps1")) {
+			plugins = append(plugins, f.Name())
+		}
+	}
+
+	// Display the list of available plugins
+	if len(plugins) == 0 {
+		fmt.Println("No plugins found.")
+		return
+	}
+
+	fmt.Println("\n---- Available Plugins ----")
+	for i, name := range plugins {
+		fmt.Printf("%d. %s\n", i+1, name) // Print with numbering
+	}
+
+	// Ask user to choose a plugin to view its information
+	fmt.Print("Enter the plugin number to view its information: ")
+	reader := bufio.NewReader(os.Stdin)
+	pluginChoice, _ := reader.ReadString('\n')
+	pluginChoice = strings.TrimSpace(pluginChoice)
+
+	// Validate user input
+	pluginIndex, err := strconv.Atoi(pluginChoice)
+	if err != nil || pluginIndex < 1 || pluginIndex > len(plugins) {
+		fmt.Println("Invalid plugin number. Please enter a valid option.")
+		return
+	}
+
+	// Get selected plugin info
+	selectedPlugin := plugins[pluginIndex-1]
+	info, err := readPluginInfo(filepath.Join(pluginsDir, selectedPlugin))
+	if err != nil {
+		fmt.Printf("Failed to read info for %s: %v\n", selectedPlugin, err)
+		return
+	}
+
+	// Display the plugin information
+	fmt.Printf("\n---- Information for %s ----\n", selectedPlugin)
+	fmt.Println(info)
+}
+
+// readPluginInfo reads the last three lines of comments from a plugin file
+func readPluginInfo(pluginPath string) (string, error) {
+	file, err := os.Open(pluginPath)
+	if err != nil {
+		return "", fmt.Errorf("error opening file: %w", err)
+	}
+	defer file.Close()
+
+	var commentLines []string
+	scanner := bufio.NewScanner(file)
+
+	// Read the file line by line
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// Check if the line is a comment
+		if isCommentLine(line, pluginPath) {
+			// If it's a comment, we can append it
+			commentLines = append(commentLines, line)
+
+			// Keep only the last 3 comment lines
+			if len(commentLines) > 3 {
+				commentLines = commentLines[1:] // Remove the oldest comment
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("error reading file: %w", err)
+	}
+
+	// Check if any comment lines were found
+	if len(commentLines) > 0 {
+		// We need to reverse the slice to display in the original order
+		reverse(commentLines)
+		return strings.Join(commentLines, "\n"), nil // Return the last three comment lines found
+	}
+
+	return "No plugin information found.", nil // Handle case with no comments
+}
+
+// Helper function to reverse a slice of strings
+func reverse(slice []string) {
+	for i, j := 0, len(slice)-1; i < j; i, j = i+1, j-1 {
+		slice[i], slice[j] = slice[j], slice[i]
 	}
 }
 
+// isCommentLine checks if a line is a comment based on the file type
+func isCommentLine(line string, pluginPath string) bool {
+	line = strings.TrimSpace(line)             // Trim whitespace
+	if strings.HasSuffix(pluginPath, ".ps1") { // PowerShell
+		return strings.HasPrefix(line, "#")
+	} else if strings.HasSuffix(pluginPath, ".py") { // Python
+		return strings.HasPrefix(line, "#")
+	} else if strings.HasSuffix(pluginPath, ".js") { // JavaScript
+		return strings.HasPrefix(line, "//")
+	}
+	return false
+}
+
+// Main function
 func main() {
-	cmd := exec.Command("cmd", "/c", "title goCLI Tool by LewdLillyVT") // Replace with your desired title
-	err := cmd.Run()
-	if err != nil {
-		log.Println("Failed to set CMD window title:", err)
-		return
-	}
+	initializeAppDirectories()
 	displayWelcomeMessage()
 
-	reader := bufio.NewReader(os.Stdin)
 	for {
 		displayMenu()
-
-		// Read the user's choice
+		reader := bufio.NewReader(os.Stdin)
 		choice, _ := reader.ReadString('\n')
 		choice = strings.TrimSpace(choice)
 
@@ -229,28 +422,18 @@ func main() {
 		case "2":
 			listPlugins()
 		case "3":
-			plugins := listPlugins()
-			if len(plugins) > 0 {
-				fmt.Print("Enter the plugin number to load and execute: ")
-				pluginChoice, _ := reader.ReadString('\n')
-				pluginChoice = strings.TrimSpace(pluginChoice)
-
-				// Convert the user input to an integer
-				pluginIndex, err := strconv.Atoi(pluginChoice)
-				if err != nil || pluginIndex < 1 || pluginIndex > len(plugins) {
-					fmt.Println("Invalid plugin number.")
-				} else {
-					// Load and execute the selected plugin
-					loadAndRunPlugin(plugins[pluginIndex-1])
-				}
-			}
+			fmt.Print("Enter the plugin name to load: ")
+			pluginName, _ := reader.ReadString('\n')
+			loadAndRunPlugin(strings.TrimSpace(pluginName))
 		case "4":
 			installPlugin()
+		case "5":
+			loadPluginInfo()
 		case "0":
-			fmt.Println("Exiting goCLI. Goodbye!")
+			fmt.Println("Exiting the application. Goodbye!")
 			return
 		default:
-			fmt.Println("Invalid choice, please select a valid option.")
+			fmt.Println("Invalid choice. Please select again.")
 		}
 	}
 }
