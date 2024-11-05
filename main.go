@@ -120,10 +120,13 @@ func listPlugins() []string {
 // Function to download and install a plugin
 func installPlugin() {
 	// URL of the server-side plugin list
-	const pluginListURL = "https://dev.lewdlilly.tv/PluginLib/pluginlib.json" // Ensure this URL is correct and accessible
+	const pluginListURL = "https://dev.lewdlilly.tv/PluginLib/pliuginlib.json"
+
+	// Create an HTTP client with a timeout
+	client := &http.Client{Timeout: 10 * time.Second}
 
 	// Fetch the plugin list
-	resp, err := http.Get(pluginListURL)
+	resp, err := client.Get(pluginListURL)
 	if err != nil {
 		log.Println("Failed to retrieve plugin list:", err)
 		fmt.Println("Error: Could not retrieve plugin list. Check your internet connection or server URL.")
@@ -195,9 +198,9 @@ func installPlugin() {
 		}
 	}
 
-	// Download the plugin file
+	// Download the plugin file with timeout-enabled client
 	fmt.Println("Downloading plugin:", selectedPlugin.Name)
-	resp, err = http.Get(selectedPlugin.URL)
+	resp, err = client.Get(selectedPlugin.URL)
 	if err != nil {
 		log.Println("Failed to download plugin:", err)
 		fmt.Println("Error: Could not download the plugin.")
@@ -408,6 +411,12 @@ func isCommentLine(line string, pluginPath string) bool {
 // Main function
 func main() {
 	initializeAppDirectories()
+	cmd := exec.Command("cmd", "/c", "title goCLI Tool by LewdLillyVT") // Replace with your desired title
+	err := cmd.Run()
+	if err != nil {
+		log.Println("Failed to set CMD window title:", err)
+		return
+	}
 	displayWelcomeMessage()
 
 	for {
