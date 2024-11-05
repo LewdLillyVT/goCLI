@@ -347,7 +347,7 @@ func loadPluginInfo() {
 	fmt.Println(info)
 }
 
-// readPluginInfo reads the last three lines of comments from a plugin file
+// readPluginInfo reads the first three lines of comments from a plugin file
 func readPluginInfo(pluginPath string) (string, error) {
 	file, err := os.Open(pluginPath)
 	if err != nil {
@@ -364,13 +364,8 @@ func readPluginInfo(pluginPath string) (string, error) {
 
 		// Check if the line is a comment
 		if isCommentLine(line, pluginPath) {
-			// If it's a comment, we can append it
+			// Append the comment line to our list
 			commentLines = append(commentLines, line)
-
-			// Keep only the last 3 comment lines
-			if len(commentLines) > 3 {
-				commentLines = commentLines[1:] // Remove the oldest comment
-			}
 		}
 	}
 
@@ -378,21 +373,16 @@ func readPluginInfo(pluginPath string) (string, error) {
 		return "", fmt.Errorf("error reading file: %w", err)
 	}
 
-	// Check if any comment lines were found
+	// Display up to the last three comments, in the order they appear in the file
+	if len(commentLines) > 3 {
+		commentLines = commentLines[len(commentLines)-3:]
+	}
+
 	if len(commentLines) > 0 {
-		// We need to reverse the slice to display in the original order
-		reverse(commentLines)
-		return strings.Join(commentLines, "\n"), nil // Return the last three comment lines found
+		return strings.Join(commentLines, "\n"), nil
 	}
 
-	return "No plugin information found.", nil // Handle case with no comments
-}
-
-// Helper function to reverse a slice of strings
-func reverse(slice []string) {
-	for i, j := 0, len(slice)-1; i < j; i, j = i+1, j-1 {
-		slice[i], slice[j] = slice[j], slice[i]
-	}
+	return "No plugin information found.", nil
 }
 
 // isCommentLine checks if a line is a comment based on the file type
