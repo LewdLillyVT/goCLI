@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: goCLI plugin requests & developer resources
+    url: https://github.com/LewdLillyVT/PluginLib
+    about: Here to request a plugin for goCLI? This is the wrong place but fear not, clicking the button takes you to the right place
