@@ -1,6 +1,6 @@
 # goCLI
 
-**goCLI** is a modular CLI tool written in **Go**. It is designed to support a flexible plugin system, allowing users to extend functionality with **Python**, **JavaScript**, and **PowerShell** plugins. All plugins are community-generated, making goCLI highly adaptable to different use cases.
+**goCLI** is a modular CLI tool written in **Go**. It is designed to support a flexible plugin system, allowing users to extend functionality with **Python** and **PowerShell** plugins. All plugins are community-generated, making goCLI highly adaptable to different use cases.
 
 ---
 
@@ -18,16 +18,15 @@ Upon first run, goCLI will create a new directory at `/LOCALAPPDATA/goCLI` with 
 
 - **logs**: Stores error logs for debugging purposes.
 - **plugins**: Stores downloaded plugins. Users can also add their own plugins directly to this folder.
-- **dependencies**: Exclusively used for JavaScript plugins that require external modules. This is necessary because our JavaScript interpreter, Otto, does not natively support NPM modules.
+- **dependencies**: For future implementation of javascript or other languages.
 
 ---
 
 ## ⚠️ Important Note
 
-On a fresh Windows installation, goCLI will only support PowerShell plugins and JavaScript plugins that don't require additional modules. To unlock full functionality:
+On a fresh Windows installation, goCLI will only support PowerShell plugins. To unlock full functionality:
 
 1. **Install Python 3** to enable Python plugins.
-2. **Install Node.js and NPM** for JavaScript plugins that require external modules.
 
 Ensure that both Python and NPM are added to your system PATH.
 
