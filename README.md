@@ -4,6 +4,11 @@
 
 ---
 
+> [!IMPORTANT]
+> Note: We have temporarily dropped support for JavaScript plugins due to issues with Otto and goCLI's code structure.
+
+---
+
 ## 🔌 Plugins
 
 Plugins in goCLI are user-generated code snippets that interact seamlessly with the goCLI environment. They allow users to add custom features and functionality, making goCLI highly customizable. goCLI provides a simple way to install plugins via its native **[Plugin Library](https://github.com/LewdLillyVT/goCLI/wiki/Plugin-Library)**, where community members can submit their own plugins for review and potential inclusion.
