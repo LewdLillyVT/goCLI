@@ -5,7 +5,7 @@
 ---
 
 > [!NOTE]
-> Note: We have temporarily dropped support for JavaScript plugins due to issues with Otto and goCLI's code structure.
+> We have temporarily dropped support for JavaScript plugins due to issues with Otto and goCLI's code structure.
 
 ---
 
