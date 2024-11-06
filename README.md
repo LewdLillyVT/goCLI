@@ -33,7 +33,7 @@ On a fresh Windows installation, goCLI will only support PowerShell plugins. To 
 
 1. **Install Python 3** to enable Python plugins.
 
-Ensure that both Python is added to your system PATH.
+Ensure that Python is added to your system PATH.
 
 ---
 
