@@ -6,6 +6,7 @@
 
 > [!NOTE]
 > We have temporarily dropped support for JavaScript plugins due to issues with Otto and goCLI's code structure.
+> Also development for goCLI is currently on hold, if you want to help fix goCLI you are welcome to do so
 
 ---
 
